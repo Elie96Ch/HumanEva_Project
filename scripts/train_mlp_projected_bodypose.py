@@ -23,25 +23,43 @@ from src.models.mlp import PoseMLP, mpjpe_loss
 def evaluate(model, loader, device):
     model.eval()
     total_loss = 0.0
-    total_mpjpe = 0.0
+    total_mpjpe_norm = 0.0
+    total_mpjpe_mm = 0.0
     total_count = 0
 
     with torch.no_grad():
-        for x, y, _ in loader:
+        for x, y, meta in loader:
             x = x.to(device)
             y = y.to(device)
 
             pred = model(x)
             loss = nn.functional.mse_loss(pred, y)
-            mpjpe = mpjpe_loss(pred, y)
+            mpjpe_norm = mpjpe_loss(pred, y)
+
+            pred_3d = pred.view(pred.shape[0], -1, 3)
+            y_3d = y.view(y.shape[0], -1, 3)
+
+            scales = meta["scale_3d"]
+            if not torch.is_tensor(scales):
+                scales = torch.tensor(scales, dtype=torch.float32)
+            scales = scales.to(device).view(-1, 1, 1)
+
+            pred_mm = pred_3d * scales
+            y_mm = y_3d * scales
+
+            mpjpe_mm = torch.norm(pred_mm - y_mm, dim=-1).mean()
 
             batch_size = x.shape[0]
             total_loss += loss.item() * batch_size
-            total_mpjpe += mpjpe.item() * batch_size
+            total_mpjpe_norm += mpjpe_norm.item() * batch_size
+            total_mpjpe_mm += mpjpe_mm.item() * batch_size
             total_count += batch_size
 
-    return total_loss / total_count, total_mpjpe / total_count
-
+    return (
+        total_loss / total_count,
+        total_mpjpe_norm / total_count,
+        total_mpjpe_mm / total_count,
+    )
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -89,7 +107,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
     num_epochs = 20
 
-    best_val_mpjpe = float("inf")
+    best_val_mpjpe_mm = float("inf")
     out_dir = Path("outputs/checkpoints")
     out_dir.mkdir(parents=True, exist_ok=True)
     best_path = out_dir / "mlp_projected_bodypose_best.pt"
@@ -117,29 +135,29 @@ def main():
             pbar.set_postfix(train_loss=running_loss / running_count)
 
         train_loss = running_loss / running_count
-        val_loss, val_mpjpe = evaluate(model, val_loader, device)
+        val_loss, val_mpjpe_norm, val_mpjpe_mm = evaluate(model, val_loader, device)
 
         print(
-            "Epoch {:02d} | train_loss={:.6f} | val_loss={:.6f} | val_mpjpe={:.4f}".format(
-                epoch, train_loss, val_loss, val_mpjpe
+            "Epoch {:02d} | train_loss={:.6f} | val_loss={:.6f} | val_mpjpe_norm={:.4f} | val_mpjpe_mm={:.4f}".format(
+                epoch, train_loss, val_loss, val_mpjpe_norm, val_mpjpe_mm
             )
         )
 
-        if val_mpjpe < best_val_mpjpe:
-            best_val_mpjpe = val_mpjpe
+        if val_mpjpe_mm < best_val_mpjpe_mm:
+            best_val_mpjpe_mm = val_mpjpe_mm
             torch.save(
                 {
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
-                    "val_mpjpe": val_mpjpe,
+                    "val_mpjpe_norm": val_mpjpe_norm,
+                    "val_mpjpe_mm": val_mpjpe_mm,
                 },
                 best_path,
             )
             print("Saved best model to:", best_path)
 
-    print("Best val MPJPE:", best_val_mpjpe)
-
+    print("Best val MPJPE (mm):", best_val_mpjpe_mm)
 
 if __name__ == "__main__":
     main()

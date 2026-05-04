@@ -31,6 +31,12 @@ def normalize_3d_points(points_3d):
         scale = 1.0
     return points_3d / scale
 
+def compute_3d_scale(points_3d):
+    scale = np.max(np.linalg.norm(points_3d, axis=1))
+    if scale < 1e-8:
+        scale = 1.0
+    return scale
+
 class HumanEvaProjectedFrameDataset(Dataset):
     def __init__(
         self,
@@ -130,7 +136,8 @@ class HumanEvaProjectedFrameDataset(Dataset):
         if self.root_center_3d:
             y = root_center_pose(y, root_index=self.root_index)
     
-        y = normalize_3d_points(y)
+        scale_3d = compute_3d_scale(y)
+        y = y / scale_3d
     
         if self.flatten:
             x = x.reshape(-1)
@@ -146,5 +153,6 @@ class HumanEvaProjectedFrameDataset(Dataset):
             "frame_idx": item["frame_idx"],
             "valid": item["valid"],
             "source_file": item["source_file"],
+            "scale_3d": float(scale_3d),
         }
         return x, y, meta
