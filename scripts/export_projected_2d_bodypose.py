@@ -62,7 +62,7 @@ def main():
                         K=cam["K"],
                         R=cam["R"],
                         t=cam["t"],
-                        dist=None,#dist=cam["dist"],
+                        dist=cam["dist"],
                     )
                     pose_2d[t] = pts2d
                     pose_cam[t] = ptscam
