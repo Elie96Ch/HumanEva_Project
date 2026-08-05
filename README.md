@@ -11,5 +11,3 @@ This repository contains preprocessing, MATLAB export, and PyTorch baseline expe
 - `scripts/` : runnable scripts
 - `src/` : reusable Python modules
 - `matlab/` : MATLAB export scripts
-- `data/` : local dataset storage (ignored by git)
-- `outputs/` : experiment outputs (ignored by git)
